@@ -16,64 +16,152 @@ module DataFields {
 		}
 	}
 
-
-	export class DatasetRegister extends helper {
-		dataSet: any[];
-		name: string = "null";
-		constructor(source: any) {
-			super("DatasetRegister");
-
-		}
-
+	class DatasetRegistry {
+		dataset: DataSet
 	}
 	
-	export class DatasetIDManager extends helper {
-		protected registry: any = {};
+	
+	export class DatasetManager extends helper {
+		protected registry: DatasetRegistry [] = [];
+
+		datasetMatch: {
+			matchingRegister: string,
+			columnName: string
+		}[];
 		constructor() {
-			super("DatasetIDManager");
+			super("DatasetManager");
 			
 		}
 		getRegistry(name: string = null) {
-			if (!name) return this.registry;
-			else return this.registry[name];
+			if (!name) throw this.throwErrorString('getRegistry', 'name: ' + name + ' is not valid');
+			else {
+				var registry = this.registry;
+				for (var i = 0, j = registry.length; i < j; i++) {
+					if (registry[i].dataset.name === name) return registry[i];
+				}
+				return null;
+			}
 		}
-		getFieldData(name: string = null) {
-			if (!name) return this.registry;
-			var reg = this.registry[name];
-			if (!reg) return null;
-			return reg.getFieldData();
+		addRegistry(name: string = null, addThisRegistry: DatasetRegistry) {
+			if (!name) throw this.throwErrorString('addRegistry', 'name: ' + name + ' is not valid');
+			var registry = this.getRegistry(name)
+			if (registry) throw this.throwErrorString('addRegistry', 'name: ' + name + ' already exists');
+			this.registry.push(addThisRegistry);
 		}
-		addDataSetRegister(name:string, data:any[]) {
+		getDataset(name: string = null) {
+			
+			var registry = this.getRegistry(name);
+			if (!registry) return null;
+			return registry.dataset;
+
+		}
+		getData(name: string = null) {
+
+			if (!name) throw this.throwErrorString('getData', 'name: ' + name + ' is not valid');
+			var dataset = this.getDataset(name);
+
+			if (!dataset) return null;
+			
+			return dataset.getData();
+		}
+		addData(name: string, primaryKey: string | number , data:any[]) {
+
+
+			if (!name) throw this.throwErrorString('addData', 'name: ' + name + ' is not valid');
 			var dataSet = new DataSet();
 			
+			
+			
+			dataSet.setDataSource(data);
+			dataSet.primaryKey = primaryKey;
+			dataSet.name = name;
+			var addThisRegistry = new DatasetRegistry();
+			addThisRegistry.dataset = dataSet;
+			this.addRegistry(name, addThisRegistry);
+			return this;
+		}
+		addMatchDefinition(name: string, mdef: MatchDefinition) {
+			if (!name) throw this.throwErrorString('addMatchDefinition', 'name: ' + name + ' is not valid');
+			var registry = this.getRegistry(name);
+			if (!registry) throw this.throwErrorString('addMatchDefinition', 'name: ' + name + ' does not exist, first add data using addData()');
+			var dataSet = registry.dataset;
+			dataSet.addMatchDefinition(mdef);
+			dataSet.refresh();
+		}
+		linkColumnToData(nameToLinkTo: string, nameOfContainingColumn: string, columnNameCriteria: string, objectName: string = null){
+			
+			if (!nameToLinkTo) throw this.throwErrorString('linkColumnToData', 'nameOfContainingColumn: ' + nameToLinkTo + ' is not valid');
+			var linkToDataset = this.getDataset(nameToLinkTo);
+			if (!linkToDataset) throw this.throwErrorString('linkColumnToData', 'name: ' + nameToLinkTo + ' does not exist');
+			if(!objectName) objectName = linkToDataset.name;
+			var containingColumnDataset = this.getDataset(nameOfContainingColumn);
+			if (!containingColumnDataset) throw this.throwErrorString('linkColumnToData', 'columnNameCriteria: ' + nameOfContainingColumn + ' does not exist');
+				
 			var mdef = new MatchDefinition();
-			mdef.criteria = 'ID';
-			mdef.doThis = (newValue, oldValue, key, source, fields, arMatch) => {
+			mdef.columnNameCriteria = '^' + columnNameCriteria + '$';
+			mdef.doThis = (newValue, oldValue, columnName, source, fields, arMatch) => {
 				var name = arMatch[0];
-				var dataSet = this.registry[name];
-				if (dataSet) {
+				//var dataSet = this.registry[name];
+				//if (dataSet) {
+			
+				var containingColumnDataset = this.getDataset(nameOfContainingColumn);
+				if (!containingColumnDataset) throw this.throwErrorString('linkColumnToData', 'columnNameCriteria: ' + nameOfContainingColumn + ' does not exist');
+				
 
-					console.log("MATCH", name, dataSet );
+				console.log("MATCH in linkColumnToData", columnName, linkToDataset, containingColumnDataset);
+				//}
+				var linkToFieldData = linkToDataset.getData();
+				var linkToIDField = linkToDataset.primaryKey;
+				for (var i = 0, j = linkToFieldData.length; i < j; i++) {
+					var IDfieldValue = linkToFieldData[i][linkToIDField];
+					if (IDfieldValue === undefined) continue;
+					if (newValue === IDfieldValue) {
+						fields[objectName] = SetDisable.on;
+						fields[objectName] = linkToFieldData[i];
+						fields[objectName] = SetDisable.off;
+					}
 				}
 
+
 			};
-			dataSet.addMatchDefinition(mdef);
-			dataSet.setDataSource(data);
-			this.registry[name] = dataSet;
-			return dataSet.getFieldData();
+			this.addMatchDefinition(nameOfContainingColumn, mdef);
+
+			
+			var mdefObject = new MatchDefinition();
+			mdefObject.columnNameCriteria = '^' + objectName + '$';
+			mdefObject.doThis = (newValue, oldValue, columnName, source, fields, arMatch) => {
+				console.log('changed source');
+				var linkToIDField = linkToDataset.primaryKey;
+				fields[columnNameCriteria] = SetDisable.on;
+				fields[columnNameCriteria] = newValue[linkToIDField];
+				fields[columnNameCriteria] = SetDisable.off;
+
+			};
+			this.addMatchDefinition(nameOfContainingColumn, mdefObject);
+			containingColumnDataset.propertyConfigure(objectName, {});
 		}
+
 	}
 	export class DataSet extends helper{
 		private dataSource: any = null;
 		private dataRows: DataRow[] = [];
 		private fieldRows: any[];
 		private matchDefinitions: MatchDefinition[] = [];
+
+		primaryKey: string | number = null;
+		name: string = "null";
+
 		constructor(source: any = null) {
 			super("DataSet");
 			if (source) this.setDataSource(source);
 
 		}
-
+		refresh() {
+			var dataRows = this.dataRows;
+			for (var i = 0, j = dataRows.length; i < j; i++) {
+				dataRows[i].refresh();
+			}
+		};
 		setDataSource(dataSource: any[]) {
 		
 			this.dataSource = dataSource;
@@ -87,7 +175,7 @@ module DataFields {
 			return this.dataSource;
 
 		}
-		getFieldData() {
+		getData() {
 			return this.fieldRows;
 		}
 		configureFromDataSource() {
@@ -117,20 +205,28 @@ module DataFields {
 				
 			}
 		}
-		
+		propertyConfigure(key: string, value: any) {
+			var dataRows = this.dataRows;
+			for (var row of dataRows) {
+
+				row.propertyConfigure(key, value);
+
+
+			};
+		}
 	   
 	}
 	export class MatchDefinition {
-
-		criteria: string;
+		alias: string;
+		columnNameCriteria: string;
 		doThis: any = function() { };
 	}
 	
 
 	export class DataRow extends helper{
 		private matchDefinitions: MatchDefinition[] = [];
-		private source: any = null;
-		private fields: any = null;
+		private source: any = {};
+		private fields: any = {};
 		
 		constructor(source: any = {}) {
 			super("DataRow");
@@ -144,7 +240,12 @@ module DataFields {
 			this.matchDefinitions.push(mdef);
 
 		}
-
+		refresh() {
+			var fields = this.fields;
+			for (var i in fields) {
+				fields[i] = fields[i];
+			}
+		}
 		
 		setSource(source: any) {
 
@@ -165,51 +266,60 @@ module DataFields {
 		configureFromSource() {
 			var source = this.source;
 			var fields = this.fields = {};
-			var that = this;
-			var propertyConfigure = function (key: string, value: any) {
-				var valueHistory = new ValueHistory();
-
-				Object.defineProperty(fields, key, {
-					get: function () {
-						console.log(key + "retrieved")
-						return value;
-					},
-					set: function (newValue) {
-						console.log(key + " changed OLD:", value, "NEW:", newValue);
-
-						for (var mdef of that.matchDefinitions) {
-							var criteria = new RegExp(mdef.criteria);
-							var test = criteria.test(key)
-							if (test) {
-								var arMatch = key.split(mdef.criteria);
-								mdef.doThis(newValue, value, key, source, fields, arMatch);
-							}
-
-
-						}
-
-						value = newValue;
-						valueHistory.add(newValue);
-					},
-					enumerable: true,
-					configurable: true
-				});
-
-				fields[key] = value;
-			}
+			
 			for (var key in source) {
 				var value = source[key];
 			   
-				propertyConfigure(key, value);
+				this.propertyConfigure(key, value);
 
 			};
 
 
 		}
-		private 
+		propertyConfigure = function (key: string, value: any) {
+			var valueHistory = new ValueHistory();
+			var source = this.source;
+			var fields = this.fields;
+			var that = this;
+			var is_disabled = false;
+			Object.defineProperty(fields, key, {
+				get: function () {
+					console.log(key + "retrieved")
+					return value;
+				},
+				set: function (newValue) {
+					console.log(key + " changed OLD:", value, "NEW:", newValue);
+					if (newValue === SetDisable.on) { is_disabled = true; return }
+					if (newValue === SetDisable.off) { is_disabled = false; return }
+					value = newValue;
+					valueHistory.add(newValue);
+					if (is_disabled) return;
+					for (var mdef of that.matchDefinitions) {
+						var criteria = new RegExp(mdef.columnNameCriteria);
+						var test = criteria.test(key)
+						if (test) {
+							var arMatch = key.split(mdef.columnNameCriteria);
+							mdef.doThis(newValue, value, key, source, fields, arMatch);
+						}
+
+
+					}
+
+					
+				},
+				enumerable: true,
+				configurable: true
+			});
+
+			fields[key] = value;
+		}
 		
 
 	   
+	}
+	class SetDisable {
+		static on: string = "}■■☻";
+		static off: string = "}☻♥☻";
 	}
 	class valueObject {
 		value: any;
@@ -218,9 +328,9 @@ module DataFields {
 		undoHistory: valueObject[] = [];
 		history: valueObject[] = [];
 		currentValue: any;
-		constructor(value: any = '~Ümqæiamnothing') {
+		constructor(value: any = SetDisable.on) {
 			super("ValueHistory");
-			if (value !== '~Ümqæiamnothing') {
+			if (value !== SetDisable.on) {
 				this.add(value);
 			}
 			return this;
