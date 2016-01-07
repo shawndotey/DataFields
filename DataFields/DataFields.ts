@@ -68,17 +68,17 @@ module DataFields {
 
 
 			if (!name) throw this.throwErrorString('addData', 'name: ' + name + ' is not valid');
-			var dataSet = new DataSet();
+			var dataset = new DataSet();
 			
 			
 			
-			dataSet.setDataSource(data);
-			dataSet.primaryKey = primaryKey;
-			dataSet.name = name;
+			dataset.setDataSource(data);
+			dataset.primaryKey = primaryKey;
+			dataset.name = name;
 			var addThisRegistry = new DatasetRegistry();
-			addThisRegistry.dataset = dataSet;
+			addThisRegistry.dataset = dataset;
 			this.addRegistry(name, addThisRegistry);
-			return this;
+			return dataset.getData();
 		}
 		addMatchDefinition(name: string, mdef: MatchDefinition) {
 			if (!name) throw this.throwErrorString('addMatchDefinition', 'name: ' + name + ' is not valid');
@@ -88,27 +88,24 @@ module DataFields {
 			dataSet.addMatchDefinition(mdef);
 			dataSet.refresh();
 		}
-		linkColumnToData(nameToLinkTo: string, nameOfContainingColumn: string, columnNameCriteria: string, objectName: string = null){
+		linkColumnToData(nameOfContainingColumn: string, columnName: string, nameToLinkTo: string,  objectName: string = null){
 			
+			//validate
 			if (!nameToLinkTo) throw this.throwErrorString('linkColumnToData', 'nameOfContainingColumn: ' + nameToLinkTo + ' is not valid');
 			var linkToDataset = this.getDataset(nameToLinkTo);
 			if (!linkToDataset) throw this.throwErrorString('linkColumnToData', 'name: ' + nameToLinkTo + ' does not exist');
 			if(!objectName) objectName = linkToDataset.name;
 			var containingColumnDataset = this.getDataset(nameOfContainingColumn);
 			if (!containingColumnDataset) throw this.throwErrorString('linkColumnToData', 'columnNameCriteria: ' + nameOfContainingColumn + ' does not exist');
-				
-			var mdef = new MatchDefinition();
-			mdef.columnNameCriteria = '^' + columnNameCriteria + '$';
-			mdef.doThis = (newValue, oldValue, columnName, source, fields, arMatch) => {
-				var name = arMatch[0];
-				//var dataSet = this.registry[name];
-				//if (dataSet) {
 			
-				var containingColumnDataset = this.getDataset(nameOfContainingColumn);
-				if (!containingColumnDataset) throw this.throwErrorString('linkColumnToData', 'columnNameCriteria: ' + nameOfContainingColumn + ' does not exist');
+			//set object when key specified with columnName changes
+			var mdef = new MatchDefinition();
+			mdef.columnNameCriteria = '^' + columnName + '$';
+			mdef.doThis = (newValue, oldValue, columnNamex, source, fields, arMatch) => {
+				var name = arMatch[0];
 				
 
-				console.log("MATCH in linkColumnToData", columnName, linkToDataset, containingColumnDataset);
+				//console.log("MATCH in linkColumnToData", columnName, linkToDataset, containingColumnDataset);
 				//}
 				var linkToFieldData = linkToDataset.getData();
 				var linkToIDField = linkToDataset.primaryKey;
@@ -119,6 +116,7 @@ module DataFields {
 						fields[objectName] = SetDisable.on;
 						fields[objectName] = linkToFieldData[i];
 						fields[objectName] = SetDisable.off;
+						break;
 					}
 				}
 
@@ -126,19 +124,85 @@ module DataFields {
 			};
 			this.addMatchDefinition(nameOfContainingColumn, mdef);
 
-			
+			//set key specified with columnName  when object changes
 			var mdefObject = new MatchDefinition();
 			mdefObject.columnNameCriteria = '^' + objectName + '$';
-			mdefObject.doThis = (newValue, oldValue, columnName, source, fields, arMatch) => {
-				console.log('changed source');
+			mdefObject.doThis = (newValue, oldValue, columnNamex, source, fields, arMatch) => {
+				//console.log('changed source');
+				newValue = newValue || {};
 				var linkToIDField = linkToDataset.primaryKey;
-				fields[columnNameCriteria] = SetDisable.on;
-				fields[columnNameCriteria] = newValue[linkToIDField];
-				fields[columnNameCriteria] = SetDisable.off;
+				fields[columnName] = SetDisable.on;
+				fields[columnName] = newValue[linkToIDField];
+				fields[columnName] = SetDisable.off;
 
 			};
 			this.addMatchDefinition(nameOfContainingColumn, mdefObject);
-			containingColumnDataset.propertyConfigure(objectName, {});
+
+			containingColumnDataset.propertyConfigure(objectName);
+		}
+		//manager.linkColumnJSON('account', 'options', 'ob_options');
+		linkColumnJSON(nameOfContainingColumn: string, columnName: string,  objectName: string = null) {
+
+			//validate
+			var containingColumnDataset = this.getDataset(nameOfContainingColumn);
+			if (!containingColumnDataset) throw this.throwErrorString('linkColumnToData', 'columnNameCriteria: ' + nameOfContainingColumn + ' does not exist');
+			
+			////set object when key specified with columnName changes
+			//var mdef = new MatchDefinition();
+			//mdef.columnNameCriteria = '^' + columnName + '$';
+			//mdef.doThis = (newValue, oldValue, columnNamex, source, fields, arMatch) => {
+			//	var name = arMatch[0];
+			//	fields[objectName] = SetDisable.on;
+			//	fields[columnName] = SetDisable.on;
+			//	try {
+			//		fields[objectName] = JSON.parse(newValue);
+
+			//	}catch(e){
+			//		fields[objectName] = null;
+			//	}
+			//	fields[objectName] = SetDisable.off;
+			//	fields[columnName] = SetDisable.off;
+
+				
+			//	//var linkToSourceData = linkToDataset.getSource();
+			//	//var linkToIDField = linkToDataset.primaryKey;
+			//	//for (var i = 0, j = linkToFieldData.length; i < j; i++) {
+			//	//	var IDfieldValue = linkToFieldData[i][linkToIDField];
+			//	//	if (IDfieldValue === undefined) continue;
+			//	//	if (newValue === IDfieldValue) {
+			//	//		fields[objectName] = SetDisable.on;
+			//	//		fields[objectName] = linkToFieldData[i];
+			//	//		fields[objectName] = SetDisable.off;
+			//	//	}
+			//	//}
+
+
+			//};
+			//this.addMatchDefinition(nameOfContainingColumn, mdef);
+
+
+			containingColumnDataset.propertyConfigure(objectName);
+			containingColumnDataset.propertyConfigure(columnName);
+
+			//set key specified with columnName  when object changes
+			var mdefObject = new MatchDefinition();
+			mdefObject.columnNameCriteria = '^' + objectName + '$';
+			mdefObject.doThis = (newValue, oldValue, columnNamex, source, fields, arMatch) => {
+				//console.log('changed source');
+				fields[columnName] = SetDisable.on;
+				fields[objectName] = SetDisable.on;
+				try {
+					fields[columnName] = JSON.stringify(newValue);
+
+				} catch (e) {
+					fields[columnName] = null;
+				}
+				fields[objectName] = SetDisable.off;
+				fields[columnName] = SetDisable.off;
+
+			};
+			this.addMatchDefinition(nameOfContainingColumn, mdefObject);
+			
 		}
 
 	}
@@ -170,7 +234,7 @@ module DataFields {
 			
 
 		}
-		getDataSource(source: any) {
+		getSource(source: any) {
 
 			return this.dataSource;
 
@@ -205,11 +269,11 @@ module DataFields {
 				
 			}
 		}
-		propertyConfigure(key: string, value: any) {
+		propertyConfigure(key: string) {
 			var dataRows = this.dataRows;
 			for (var row of dataRows) {
 
-				row.propertyConfigure(key, value);
+				row.propertyConfigure(key);
 
 
 			};
@@ -268,32 +332,42 @@ module DataFields {
 			var fields = this.fields = {};
 			
 			for (var key in source) {
-				var value = source[key];
+				//var value = source[key];
 			   
-				this.propertyConfigure(key, value);
+				this.propertyConfigure(key);
 
 			};
 
 
 		}
-		propertyConfigure = function (key: string, value: any) {
+		propertyConfigure = function (key: string) {
+			
+			var fields = this.fields;
+			var Descriptor = Object.getOwnPropertyDescriptor(fields, key);
+			if (Descriptor && !Descriptor.configurable) return;
+
 			var valueHistory = new ValueHistory();
 			var source = this.source;
-			var fields = this.fields;
+			var value = source[key];
+			
 			var that = this;
 			var is_disabled = false;
+
 			Object.defineProperty(fields, key, {
 				get: function () {
-					console.log(key + "retrieved")
+					//console.log(key + "retrieved")
 					return value;
 				},
 				set: function (newValue) {
-					console.log(key + " changed OLD:", value, "NEW:", newValue);
+					//console.log(key + " changed OLD:", value, "NEW:", newValue);
 					if (newValue === SetDisable.on) { is_disabled = true; return }
 					if (newValue === SetDisable.off) { is_disabled = false; return }
+					
 					value = newValue;
 					valueHistory.add(newValue);
+					if (Object.keys(source).indexOf(key) !== -1) source[key] = value;
 					if (is_disabled) return;
+					
 					for (var mdef of that.matchDefinitions) {
 						var criteria = new RegExp(mdef.columnNameCriteria);
 						var test = criteria.test(key)
@@ -308,7 +382,7 @@ module DataFields {
 					
 				},
 				enumerable: true,
-				configurable: true
+				configurable: false
 			});
 
 			fields[key] = value;
